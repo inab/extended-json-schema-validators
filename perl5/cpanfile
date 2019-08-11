@@ -4,3 +4,4 @@ requires 'File::Spec';
 requires 'File::Temp';
 requires 'Mojo::Util';
 requires 'URI';
+requires 'Storable';
