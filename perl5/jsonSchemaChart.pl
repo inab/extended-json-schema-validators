@@ -17,42 +17,79 @@ STDERR->autoflush;
 
 use JSON::ExtendedValidator;
 
+use Mojo::Util qw();
 
 
-sub genNode($$);
-sub genObjectNodes($$);
+sub genNode($$$);
+sub genObjectNodes($$$;$);
 
 my %DECO = (
 	'object' => '{}',
 	'array' => '[]',
 );
 
-sub genObjectNodes($$) {
-	my($label,$kPayload) = @_;
+sub genObjectNodes($$$;$) {
+	my($label,$kPayload,$prefix,$isTable) = @_;
 	
-	$label =~ s/([\[\]\{\}])/\\$1/g;
+	my $origPrefix = undef;
+	if(defined($prefix) && length($prefix) > 0) {
+		$origPrefix = $prefix;
+		$prefix .= '.';
+	} else {
+		$origPrefix = $prefix = '';
+	}
+	
+	# Avoiding special chars
+	$origPrefix = Mojo::Util::md5_sum($origPrefix);
+	
+	my $origLabel = undef;
+	#$label =~ s/([\[\]\{\}])/\\$1/g;
 	if($kPayload->{'type'} eq 'object') {
 		if(exists($kPayload->{'properties'})) {
-			my @ret = ($label);
+			$origLabel = $label;
+			if($isTable) {
+				$label = <<TLABEL ;
+<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0">
+	<TR>
+		<TD COLSPAN="2" ALIGN="CENTER"><FONT POINT-SIZE="20">$label</FONT></TD>
+	</TR>
+TLABEL
+			} else {
+				$label = "\t\t<TD ALIGN=\"LEFT\" PORT=\"$origPrefix\">$label</TD>\n\t\t<TD BORDER=\"0\"><TABLE BORDER=\"0\" CELLBORDER=\"1\" CELLSPACING=\"0\">\n";
+			}
+			
+			my @ret = ();
 			
 			my $kP = $kPayload->{'properties'};
 			foreach my $keyP (keys(%{$kP})) {
-				push(@ret,genNode($keyP,$kP->{$keyP}));
+				push(@ret,genNode($keyP,$kP->{$keyP},$prefix));
 			}
+				
+			$label .= "\t<TR>\n".join("\t</TR>\n\t<TR>\n",@ret)."\t</TR>\n";
 			
-			return join('|',@ret);
+			if($isTable) {
+				$label .= "</TABLE>";
+			} else {
+				$label .= "</TABLE></TD>\n";
+			}
 		}
+	}
+	
+	unless(defined($origLabel)) {
+		#$label = "\t\t<TD COLSPAN=\"2\">$label</TD>\n";
+		$label = undef;
 	}
 	
 	return $label;
 }
 
-sub genNode($$) {
-	my($key,$kPayload) = @_;
+sub genNode($$$) {
+	my($key,$kPayload,$prefix) = @_;
 	
 	my $val = $key;
 	while(exists($kPayload->{'type'})) {
 		$val .= $DECO{$kPayload->{'type'}}  if(exists($DECO{$kPayload->{'type'}}));
+		$key .= '[]'  if($kPayload->{'type'} eq 'array');
 		
 		if($kPayload->{'type'} eq 'array') {
 			if(exists($kPayload->{'items'})) {
@@ -61,7 +98,7 @@ sub genNode($$) {
 			}
 		} elsif($kPayload->{'type'} eq 'object') {
 			if(exists($kPayload->{'properties'})) {
-				return '{'.genObjectNodes($val,$kPayload).'}';
+				return genObjectNodes($val,$kPayload,$prefix.$key);
 			}
 		}
 		
@@ -69,9 +106,13 @@ sub genNode($$) {
 	}
 	
 	# Escaping
-	$val =~ s/([\[\]\{\}])/\\$1/g;
+	#$val =~ s/([\[\]\{\}])/\\$1/g;
 	
-	return $val;
+	my $toHeaderName = $prefix . $key;
+	# Avoiding special chars
+	$toHeaderName = Mojo::Util::md5_sum($toHeaderName);
+	
+	return "\t\t<TD COLSPAN=\"2\" ALIGN=\"LEFT\" PORT=\"$toHeaderName\">$val</TD>\n";
 }
 
 
@@ -94,18 +135,19 @@ if(scalar(@ARGV) > 1) {
 		print $DOT <<PRE ;
 digraph schemas {
 	rankdir=LR;
+	node [shape=plaintext];
 
-	node [shape=record];
 PRE
+#	node [shape=record];
 		my $sCounter = 0;
 		my %sHash = ();
 		
 		# First pass
-		while(my($id,$payload) = each(%{$p_schemaHash})) {
+		foreach my $id (keys(%{$p_schemaHash})) {
+			my $payload = $p_schemaHash->{$id};
 			my $schema = $payload->[0];
 			
 			my $nodeId = 's' . $sCounter;
-			$sHash{$id} = $nodeId;
 			
 			my $headerName = $id;
 			my $rSlash = rindex($headerName,'/');
@@ -117,21 +159,36 @@ PRE
 			my $label = $headerName;
 			
 			if(exists($schema->{'properties'})) {
-				$label = genObjectNodes($headerName,$schema);
+				$label = genObjectNodes($headerName,$schema,undef,1);
+				
+				if(defined($label)) {
+					print $DOT "\t$nodeId \[label=<\n$label\n>\];\n";
+					
+					$sHash{$id} = $nodeId;
+					$sCounter++;
+				}
 			}
-			
-			print $DOT "\t$nodeId \[label=\"$label\"\];\n";
-			
-			$sCounter++;
 		}
 		
 		# Second pass
-		while(my($id,$payload) = each(%{$p_schemaHash})) {
+		foreach my $id (keys(%{$p_schemaHash})) {
+			my $payload = $p_schemaHash->{$id};
 			my $fromNodeId = $sHash{$id};
 			
 			foreach my $p_FK (@{$payload->[3]}) {
+				my $toHeaderName = $p_FK->[0];
+				my $rSlash = rindex($toHeaderName,'/');
+				if($rSlash!=-1) {
+					$toHeaderName = substr($toHeaderName,$rSlash + 1);
+				}
+				
 				my $toNodeId = $sHash{$p_FK->[0]};
-				print $DOT "\t$fromNodeId -> $toNodeId;\n";
+				print STDERR "DEBUG $id: $toHeaderName ",join(' ',@{$p_FK->[1]}),"\n";
+				
+				foreach my $port (@{$p_FK->[1]}) {
+					my $mport = Mojo::Util::md5_sum($port);
+					print $DOT "\t$fromNodeId:\"$mport\" -> $toNodeId;\n";
+				}
 			}
 		}
 		
