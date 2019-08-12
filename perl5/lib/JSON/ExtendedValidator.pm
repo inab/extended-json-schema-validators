@@ -368,6 +368,12 @@ sub loadJSONSchemas($\@) {
 	return scalar(keys(%{$p_schemaHash}));
 }
 
+sub getValidSchemas($) {
+	my $self = shift;
+	
+	return $self->{'schemaHash'};
+}
+
 sub MaterializeJPath($$) {
 	my($jsonDoc,$jPath) = @_;
 	

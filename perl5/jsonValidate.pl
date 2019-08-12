@@ -20,15 +20,12 @@ use JSON::ExtendedValidator;
 if(scalar(@ARGV) > 0) {
 	my $jsonSchemaDir = shift(@ARGV);
 	
-	# The temporal directory where the symlinks to the schemas being validated
-	# are being stored
-	
 	my $ev = JSON::ExtendedValidator->new();
 	$ev->cacheJSONSchemas($jsonSchemaDir);
 	my $numSchemas = $ev->loadCachedJSONSchemas();
 	
 	if(scalar(@ARGV) > 0) {
-		if($numSchemas ==0) {
+		if($numSchemas == 0) {
 			print STDERR "FATAL ERROR: No schema was successfuly loaded. Exiting...\n";
 			exit 1;
 		}
