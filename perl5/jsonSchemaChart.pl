@@ -183,7 +183,6 @@ PRE
 				}
 				
 				my $toNodeId = $sHash{$p_FK->[0]};
-				print STDERR "DEBUG $id: $toHeaderName ",join(' ',@{$p_FK->[1]}),"\n";
 				
 				foreach my $port (@{$p_FK->[1]}) {
 					my $mport = Mojo::Util::md5_sum($port);
