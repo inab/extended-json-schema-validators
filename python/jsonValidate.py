@@ -557,6 +557,7 @@ def jsonValidate(p_schemaHash,uriLoad,*args):
 			numFilePass2Fail += 1
 	
 	print("\nVALIDATION STATS:\n\t- directories ({0} OK, {1} failed)\n\t- PASS 1 ({2} OK, {3} ignored, {4} error)\n\t- PASS 2 ({5} OK, {6} error)".format(numDirOK,numDirFail,numFilePass1OK,numFilePass1Ignore,numFilePass1Fail,numFilePass2OK,numFilePass2Fail))
+	return numDirFail + numFilePass1Fail + numFilePass2Fail
 
 
 if len(sys.argv) > 1:
@@ -573,7 +574,8 @@ if len(sys.argv) > 1:
 			sys.exit(1)
 		
 		args = tuple(sys.argv[2:])
-		jsonValidate(schemaHash,uriLoad,*args)
+		num_errors = jsonValidate(schemaHash,uriLoad,*args)
+		sys.exit(num_errors > 0)
 else:
 	print("Usage: {0} {{JSON schema}} {{JSON file}}*".format(sys.argv[0]),file=sys.stderr)
 	sys.exit(1)
